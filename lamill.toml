@@ -1,0 +1,49 @@
+# lamill.toml — per-site config consumed by lamill (portfolio/ops) and rankmill (content/audits).
+# [content] = stable identity, authored by hand. [todo] = volatile work state.
+# rankmill output lives in sites/<domain>/rankmill-output/, not here.
+
+schema = "lamill-toml-v1"
+
+[deploy]
+platform = "cf-pages"
+production_branch = "main"
+custom_domains = [
+    "meetwhen.xyz",
+]
+
+[stack]
+framework = "astro"
+
+# Tracked todos for meetwhen.xyz. status: "done" | "open".
+[[todo]]
+status = "open"
+priority = "high"
+task = "Fill in [content] block (site_type, primary_keyword, icp, …)"
+
+[[todo]]
+status = "open"
+priority = "medium"
+task = "Check SEO: GSC indexation + coverage (revisit ~2026-06-16)"
+
+[[todo]]
+status = "open"
+priority = "medium"
+task = "Verify GA4 is receiving data (check Realtime after first traffic)"
+
+[[todo]]
+status = "open"
+priority = "low"
+task = "Confirm GSC verification + sitemap submitted (re-run deploy if it timed out)"
+
+[content]
+# Declarative content identity for this site.
+# Authored by the human; consumed by rankmill to generate drafts and run audits.
+# Leave fields empty until you have a deliberate answer. Empty is better than wrong.
+site_type = ""            # e.g. "legal-compliance", "tool", "directory", "blog", "b2c"
+primary_keyword = ""      # the one phrase this site should rank for
+secondary_keywords = []   # 3-8 supporting phrases
+icp = ""                  # ideal customer profile — one sentence, specific role + context
+urgency_trigger = ""      # what makes the reader act now (deadline, penalty, pain)
+penalty = ""              # cost of inaction, in their terms (dollars, risk, time)
+tone = ""                 # e.g. "direct, technical, no fluff" or "warm, plainspoken"
+law = ""                  # statute or regulation if applicable, else empty
