@@ -16,8 +16,7 @@ framework = "astro"
 
 # Tracked todos for meetwhen.xyz. status: "done" | "open".
 [[todo]]
-status = "open"
-priority = "high"
+status = "done"
 task = "Fill in [content] block (site_type, primary_keyword, icp, …)"
 
 [[todo]]
@@ -39,11 +38,16 @@ task = "Confirm GSC verification + sitemap submitted (re-run deploy if it timed 
 # Declarative content identity for this site.
 # Authored by the human; consumed by rankmill to generate drafts and run audits.
 # Leave fields empty until you have a deliberate answer. Empty is better than wrong.
-site_type = ""            # e.g. "legal-compliance", "tool", "directory", "blog", "b2c"
-primary_keyword = ""      # the one phrase this site should rank for
-secondary_keywords = []   # 3-8 supporting phrases
-icp = ""                  # ideal customer profile — one sentence, specific role + context
-urgency_trigger = ""      # what makes the reader act now (deadline, penalty, pain)
-penalty = ""              # cost of inaction, in their terms (dollars, risk, time)
-tone = ""                 # e.g. "direct, technical, no fluff" or "warm, plainspoken"
+site_type = "tool"
+primary_keyword = "best time to meet between [city] and [city]"
+secondary_keywords = [
+    "[city] to [city] meeting planner",
+    "what time to schedule a call with [country]",
+    "how to run a fair rotating meeting across 3+ timezones",
+    "meeting overlap visualization",
+]
+icp = "The sharpest early user is an individual contributor or manager on a distributed team who personally owns scheduling for recurring cross-timezone meetings — say someone in the US coordinating a standup or client call with colleagues in Europe and Asia. They feel the pain weekly, they're the one who gets blamed for the 6am invite, and they currently solve it with World Time Buddy, a spreadsheet, or counting on their fingers. They're not a buyer — they won't expense a tool — but they will bookmark and reshare something that's faster and clearer than what they use now, and they're the seed for word-of-mouth inside teams. This is a top-of-funnel utility audience, not a monetization target; the ICP is defined by frequency of pain and likelihood to share, not willingness to pay."
+urgency_trigger = "You need an immediate answer to schedule a cross-timezone meeting without back-and-forth or forcing someone into an early‑morning/late‑night slot."
+penalty = "Wasted time and coordination friction, continued back-and-forth and risking colleagues being scheduled at inconvenient (e.g., 6am or late-night) times and getting blamed for bad invites."
+tone = "direct, utilitarian, no fluff"
 law = ""                  # statute or regulation if applicable, else empty
