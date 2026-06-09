@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { DateTime } from "luxon";
 import { CITIES, type City } from "../lib/cities";
 
@@ -10,14 +10,46 @@ type Participant = {
   workEnd: number; // hour 1-24
 };
 
+type SlotParticipant = { participant: Participant; local: DateTime; inWork: boolean };
+type ScoredSlot = { slot: DateTime; perParticipant: SlotParticipant[]; inCount: number; midScore: number };
+
 const newId = () => Math.random().toString(36).slice(2, 9);
 
 function findCity(tz: string, name: string): City {
   return CITIES.find((c) => c.tz === tz && c.name === name) ?? CITIES[0];
 }
 
+// Detect the visitor's city from their IANA timezone. Prefers an exact tz match,
+// then falls back to the nearest city sharing the same current UTC offset, then SF.
+function detectCity(): City {
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return CITIES[0];
+  }
+  if (!tz) return CITIES[0];
+  const exact = CITIES.find((c) => c.tz === tz);
+  if (exact) return exact;
+  const here = DateTime.now().setZone(tz);
+  if (here.isValid) {
+    const sameOffset = CITIES.find((c) => DateTime.now().setZone(c.tz).offset === here.offset);
+    if (sameOffset) return sameOffset;
+  }
+  return CITIES[0];
+}
+
+// Clean, shareable plain-text summary of a slot for the clipboard.
+function slotSummary(s: ScoredSlot): string {
+  const date = s.slot.setZone(s.perParticipant[0].participant.city.tz).toFormat("EEE, MMM d");
+  const lines = s.perParticipant.map(
+    (x) => `- ${x.participant.name} · ${x.participant.city.name} — ${x.local.toFormat("HH:mm")}`,
+  );
+  return `Meeting: ${date}\n${lines.join("\n")}`;
+}
+
 const DEFAULT_PARTICIPANTS = (): Participant[] => [
-  { id: newId(), name: "Person 1", city: findCity("America/Los_Angeles", "San Francisco"), workStart: 9, workEnd: 17 },
+  { id: newId(), name: "Me", city: findCity("America/Los_Angeles", "San Francisco"), workStart: 9, workEnd: 17 },
   { id: newId(), name: "Person 2", city: findCity("Europe/London", "London"), workStart: 9, workEnd: 17 },
 ];
 
@@ -39,6 +71,17 @@ export default function TimezoneTool() {
   const [participants, setParticipants] = useState<Participant[]>(DEFAULT_PARTICIPANTS);
   const [selectedSlotIso, setSelectedSlotIso] = useState<string | null>(null);
   const [nowTick] = useState(() => DateTime.utc());
+
+  // On first load, pre-select Person 1's city from the visitor's local timezone.
+  // Runs after hydration to avoid an SSR/client mismatch on the default (SF).
+  useEffect(() => {
+    const detected = detectCity();
+    setParticipants((ps) =>
+      ps.length === 0 || ps[0].city.tz === detected.tz
+        ? ps
+        : ps.map((p, i) => (i === 0 ? { ...p, city: detected } : p)),
+    );
+  }, []);
 
   // Build 48 half-hour candidate slots starting from "now" rounded down
   const refUtc = useMemo(() => nowTick.startOf("hour"), [nowTick]);
@@ -130,30 +173,6 @@ export default function TimezoneTool() {
         </div>
       </section>
 
-      {/* Timelines */}
-      <section className="space-y-3" aria-label="Timelines">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            Local timelines — next 24 hours
-          </h2>
-          <p className="text-xs text-muted-foreground">All times shown in each person's local timezone.</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
-          <div className="min-w-[640px] space-y-2">
-            <HourAxis hourSlots={hourSlots} />
-            {participants.map((p) => (
-              <TimelineRow
-                key={p.id}
-                participant={p}
-                hourSlots={hourSlots}
-                nowUtc={nowTick}
-                selectedSlot={selectedSlot}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Suggested slots */}
       <section className="space-y-3" aria-label="Suggested meeting slots">
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -164,7 +183,7 @@ export default function TimezoneTool() {
             const everyone = s.inCount === participants.length;
             const isSelected = selectedSlotIso === s.slot.toISO();
             return (
-              <li key={s.slot.toISO()}>
+              <li key={s.slot.toISO()} className="relative">
                 <button
                   onClick={() => setSelectedSlotIso(s.slot.toISO())}
                   className={`w-full text-left rounded-lg border p-3 transition-colors ${
@@ -173,7 +192,7 @@ export default function TimezoneTool() {
                       : "border-border bg-card hover:bg-accent/50"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2 pr-24">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         everyone
@@ -209,10 +228,35 @@ export default function TimezoneTool() {
                     ))}
                   </div>
                 </button>
+                <CopyButton text={slotSummary(s)} />
               </li>
             );
           })}
         </ul>
+      </section>
+
+      {/* Timelines */}
+      <section className="space-y-3" aria-label="Timelines">
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            Local timelines — next 24 hours
+          </h2>
+          <p className="text-xs text-muted-foreground">All times shown in each person's local timezone.</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
+          <div className="min-w-[640px] space-y-2">
+            <HourAxis hourSlots={hourSlots} />
+            {participants.map((p) => (
+              <TimelineRow
+                key={p.id}
+                participant={p}
+                hourSlots={hourSlots}
+                nowUtc={nowTick}
+                selectedSlot={selectedSlot}
+              />
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );
@@ -304,6 +348,49 @@ function ParticipantCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const copy = async (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for non-secure contexts / older browsers.
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked — leave the label unchanged.
+    }
+  };
+
+  return (
+    <button
+      onClick={copy}
+      aria-label="Copy meeting time"
+      className="absolute top-3 right-3 z-10 text-xs px-2 py-1 rounded-md border border-border bg-card hover:bg-accent transition-colors"
+    >
+      {copied ? "Copied!" : "Copy time"}
+    </button>
   );
 }
 
