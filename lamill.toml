@@ -11,6 +11,10 @@ custom_domains = [
     "meetwhen.xyz",
 ]
 
+[index]
+indexnow_key = "e530fb58281629c123c7d4e93cad611e"
+indexnow_enabled = true
+
 [stack]
 framework = "astro"
 
