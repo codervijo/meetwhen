@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://meetwhen.xyz/sitemap.xml
+Sitemap: https://meetwhen.xyz/sitemap-index.xml
