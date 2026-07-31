@@ -1,0 +1,126 @@
+---
+// City index — the crawl entry point for the whole /meet/ tree. Links every city
+// hub page and the full pair matrix, so nothing depends on the sitemap alone.
+import Layout from "../../layouts/Layout.astro";
+import PageHead from "../../components/PageHead.astro";
+import { CITIES, HUB_PAIRS, utcOffsetLabel } from "../../lib/cities";
+import { BUILD_DATE } from "../../lib/facts";
+
+const date = BUILD_DATE;
+
+// Region comes off the IANA zone prefix, so it can't drift from the data.
+const REGION_LABELS: Record<string, string> = {
+  America: "The Americas",
+  Europe: "Europe",
+  Africa: "Africa",
+  Asia: "Asia & the Middle East",
+  Australia: "Australia",
+  Pacific: "Pacific",
+};
+
+const grouped = Object.entries(
+  CITIES.reduce<Record<string, typeof CITIES>>((acc, c) => {
+    const region = c.tz.split("/")[0];
+    (acc[region] ??= []).push(c);
+    return acc;
+  }, {}),
+).sort((x, y) => Object.keys(REGION_LABELS).indexOf(x[0]) - Object.keys(REGION_LABELS).indexOf(y[0]));
+
+const title = "Meeting planners by city — meetwhen.xyz";
+const description = `Find the best meeting time between any two of ${CITIES.length} cities. Ranked slots in every participant's local time, daylight-saving correct, no account needed.`;
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://meetwhen.xyz/" },
+      { "@type": "ListItem", position: 2, name: "Cities", item: "https://meetwhen.xyz/meet/" },
+    ],
+  },
+];
+---
+
+<Layout>
+  <Fragment slot="head">
+    <PageHead title={title} description={description} path="/meet/" jsonLd={jsonLd} />
+  </Fragment>
+
+  <main class="min-h-screen bg-background text-foreground">
+    <div class="mx-auto max-w-5xl px-4 py-10 md:py-16">
+      <nav aria-label="Breadcrumb" class="mb-6 text-xs text-muted-foreground">
+        <a href="/" class="hover:underline">meetwhen.xyz</a>
+        <span class="mx-1">/</span>
+        <span class="text-foreground">cities</span>
+      </nav>
+
+      <header class="mb-10">
+        <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">Meeting planners by city</h1>
+        <p class="mt-3 text-muted-foreground max-w-2xl">
+          {CITIES.length} cities and {HUB_PAIRS.length} ready-made city pairs. Every page shows
+          the ranked meeting slots in each person's own local time, computed from the IANA
+          timezone database so daylight saving is handled for the date you pick.
+        </p>
+      </header>
+
+      {
+        grouped.map(([region, cities]) => (
+          <section class="mb-10" aria-labelledby={`region-${region}`}>
+            <h2
+              id={`region-${region}`}
+              class="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3"
+            >
+              {REGION_LABELS[region] ?? region}
+            </h2>
+            <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {cities.map((c) => (
+                <li>
+                  <a
+                    href={`/meet/${c.slug}/`}
+                    class="flex items-baseline justify-between rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-accent transition-colors"
+                  >
+                    <span>{c.name}</span>
+                    <span class="text-xs text-muted-foreground font-mono">
+                      {utcOffsetLabel(c.tz, date)}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+
+      <section aria-labelledby="all-pairs" class="mt-14">
+        <h2 id="all-pairs" class="text-2xl font-semibold tracking-tight mb-4">
+          Every city pair
+        </h2>
+        <p class="text-sm text-muted-foreground mb-5">
+          Cities that keep an identical clock all year (Berlin and Paris, Toronto and New York)
+          share one set of pair pages — the maths is the same, so there is one page for it
+          rather than two.
+        </p>
+        <ul class="flex flex-wrap gap-1.5">
+          {
+            HUB_PAIRS.map((p) => (
+              <li>
+                <a
+                  href={`/meet/${p.a.slug}/${p.b.slug}/`}
+                  class="inline-block rounded border border-border bg-card px-2 py-1 text-xs hover:bg-accent transition-colors"
+                >
+                  {p.a.name} ↔ {p.b.name}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <footer class="mt-16 pt-6 border-t border-border text-xs text-muted-foreground">
+        <a href="/" class="underline">Planner</a>
+        <span class="mx-2">·</span>
+        <a href="/guides/" class="underline">Scheduling guides</a>
+      </footer>
+    </div>
+  </main>
+</Layout>

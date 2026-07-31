@@ -64,3 +64,25 @@ https://search.google.com/search-console directly.
 - **Action:** project scaffolded via `portfolio new bootstrap`; first deploy pending. After deploy: verify in GSC as `sc-domain:meetwhen.xyz` and submit the sitemap.
 - **Result:** TBD — review 2026-06-30
 - **Learning:** TBD
+
+## 2026-07-30 — v1.B: expand the indexable surface from 1 page to 308
+- **Status:** active
+- **Hypothesis:** The site was indexed and healthy but had exactly one route, so it could
+  only ever rank for head terms it has no authority to win. The bet is that the long tail of
+  "[city] to [city] meeting time" queries is winnable on a young domain *because the page is
+  the tool* — a pre-filled planner with the answer already computed in HTML is not something
+  an AI Overview replaces with a sentence. If pSEO pages of this shape don't get indexed and
+  don't earn impressions within a couple of months, the wedge is too weak to beat free
+  incumbents and that's a kill signal for the channel, not just for these pages.
+- **KPI:** indexed-page count in GSC (target: the large majority of 308 submitted), then
+  impressions on `[city] + [city]` queries. Clicks are a later-stage metric; don't judge on
+  them inside the first window.
+- **Baseline:** 1 indexed page, 1 URL in the sitemap, 0 impressions, 0 clicks (28d).
+- **Action:** Built 48 city hub pages, 253 city-pair pages, 4 evergreen guides, and `/meet/`
+  + `/guides/` indexes. Pair pages are deduped by computed IANA offset signature, so cities
+  that keep an identical clock all year (Berlin/Paris, Toronto/New York) share one page
+  rather than generating duplicate content. Every page server-renders the ranked slots and
+  the per-person timelines, so there is real content before hydration. Internal links run
+  home → indexes → hubs → pairs, so discovery does not depend on the sitemap.
+- **Result:** TBD — review 2026-08-27
+- **Learning:** TBD

@@ -1,0 +1,240 @@
+---
+// City hub page — one per city in the dataset (49 pages). Anchors the pair
+// pages for that city and answers the single-city half of the query space
+// ("what time is it in X when I'm scheduling from Y").
+import { DateTime } from "luxon";
+import Layout from "../../layouts/Layout.astro";
+import PageHead from "../../components/PageHead.astro";
+import StaticSlots from "../../components/StaticSlots.astro";
+import TimezoneTool from "../../components/TimezoneTool.tsx";
+import {
+  CITIES,
+  HUB_CITIES,
+  hubTwin,
+  observesDst,
+  offsetSignature,
+  pairsFor,
+  utcOffsetLabel,
+  type City,
+} from "../../lib/cities";
+import { BUILD_DATE, citySentence, gapHours, hoursPhrase } from "../../lib/facts";
+import { staticParticipant } from "../../lib/schedule";
+
+export function getStaticPaths() {
+  return CITIES.map((city) => ({ params: { city: city.slug }, props: { city } }));
+}
+
+interface Props {
+  city: City;
+}
+
+const { city } = Astro.props;
+const date = BUILD_DATE;
+const path = `/meet/${city.slug}/`;
+
+// Counterpart for the pre-filled planner: the highest-priority hub that keeps a
+// different clock, so the page opens on a genuine cross-timezone example.
+const sig = offsetSignature(city.tz);
+const counterpart = HUB_CITIES.find((h) => offsetSignature(h.tz) !== sig) ?? HUB_CITIES[0];
+
+const participants = [
+  staticParticipant(city, city.name, 0),
+  staticParticipant(counterpart, counterpart.name, 1),
+];
+
+const pairs = pairsFor(city);
+const twin = hubTwin(city);
+
+// "When it's 9 AM in <city>" — the local time in every other hub, computed.
+const anchorHours = [9, 13, 17];
+const base = DateTime.fromISO(date, { zone: city.tz }).startOf("day");
+const clockTable = HUB_CITIES.filter((h) => h.slug !== city.slug).map((h) => ({
+  city: h,
+  times: anchorHours.map((hr) => base.plus({ hours: hr }).setZone(h.tz)),
+}));
+
+const title = `Meeting times for ${city.name} — plan calls across timezones | meetwhen.xyz`;
+const description = `${city.name} runs on ${utcOffsetLabel(city.tz, date)} (${city.tz}). See what time it is elsewhere when you schedule from ${city.name}, and find the fairest slot for everyone.`;
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://meetwhen.xyz/" },
+      { "@type": "ListItem", position: 2, name: "Cities", item: "https://meetwhen.xyz/meet/" },
+      { "@type": "ListItem", position: 3, name: city.name, item: `https://meetwhen.xyz${path}` },
+    ],
+  },
+];
+---
+
+<Layout>
+  <Fragment slot="head">
+    <PageHead
+      title={title}
+      description={description}
+      path={path}
+      ogTitle={`${city.name} meeting planner`}
+      jsonLd={jsonLd}
+    />
+  </Fragment>
+
+  <main class="min-h-screen bg-background text-foreground">
+    <div class="mx-auto max-w-5xl px-4 py-10 md:py-16">
+      <nav aria-label="Breadcrumb" class="mb-6 text-xs text-muted-foreground">
+        <a href="/" class="hover:underline">meetwhen.xyz</a>
+        <span class="mx-1">/</span>
+        <a href="/meet/" class="hover:underline">cities</a>
+        <span class="mx-1">/</span>
+        <span class="text-foreground">{city.name}</span>
+      </nav>
+
+      <header class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">
+          Scheduling meetings from {city.name}
+        </h1>
+        <p class="mt-3 text-muted-foreground max-w-2xl">
+          {city.name}, {city.country} runs on <strong>{utcOffsetLabel(city.tz, date)}</strong>
+          {" "}({city.tz}){
+            observesDst(city.tz)
+              ? " and shifts with daylight saving during the year."
+              : " year-round, with no daylight saving."
+          } Pick who you're meeting and the planner ranks the slots that treat everyone
+          fairly.
+        </p>
+      </header>
+
+      <TimezoneTool
+        client:load
+        prefill={[
+          { name: city.name, tz: city.tz, cityName: city.name, start: 9, end: 17 },
+          {
+            name: counterpart.name,
+            tz: counterpart.tz,
+            cityName: counterpart.name,
+            start: 9,
+            end: 17,
+          },
+        ]}
+      />
+
+      <StaticSlots
+        participants={participants}
+        dateISO={date}
+        heading={`Example: ${city.name} and ${counterpart.name}`}
+      />
+
+      <section aria-labelledby="clock" class="mt-14">
+        <h2 id="clock" class="text-2xl font-semibold tracking-tight mb-3">
+          What time is it elsewhere when you schedule from {city.name}?
+        </h2>
+        <p class="text-sm text-muted-foreground mb-5">
+          Local times on {DateTime.fromISO(date).toFormat("d LLLL yyyy")}, computed from each
+          city's IANA rules.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="text-left border-b border-border">
+                <th scope="col" class="py-2 pr-4 font-medium">City</th>
+                <th scope="col" class="py-2 pr-4 font-medium">Gap</th>
+                {
+                  anchorHours.map((h) => (
+                    <th scope="col" class="py-2 pr-4 font-medium whitespace-nowrap">
+                      {DateTime.fromObject({ hour: h }).toFormat("h a")} in {city.name}
+                    </th>
+                  ))
+                }
+              </tr>
+            </thead>
+            <tbody>
+              {
+                clockTable.map((row) => {
+                  const g = gapHours(city, row.city, date);
+                  return (
+                    <tr class="border-b border-border/60">
+                      <td class="py-2 pr-4 whitespace-nowrap">
+                        <a href={`/meet/${row.city.slug}/`} class="hover:underline">
+                          {row.city.name}
+                        </a>
+                      </td>
+                      <td class="py-2 pr-4 text-muted-foreground whitespace-nowrap">
+                        {g === 0 ? "same" : `${g > 0 ? "+" : "−"}${hoursPhrase(g)}`}
+                      </td>
+                      {row.times.map((t) => (
+                        <td class="py-2 pr-4 whitespace-nowrap">
+                          {t.toFormat("h:mm a")}
+                          <span class="text-muted-foreground text-xs ml-1">
+                            {t.toFormat("ccc")}
+                          </span>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="dst" class="mt-14">
+        <h2 id="dst" class="text-2xl font-semibold tracking-tight mb-3">
+          Daylight saving in {city.name}
+        </h2>
+        <p class="text-muted-foreground max-w-3xl">{citySentence(city, date)}</p>
+      </section>
+
+      {
+        pairs.length > 0 ? (
+          <section aria-labelledby="pairs" class="mt-14">
+            <h2 id="pairs" class="text-2xl font-semibold tracking-tight mb-4">
+              {city.name} meeting planners
+            </h2>
+            <ul class="flex flex-wrap gap-2">
+              {pairs.map((p) => (
+                <li>
+                  <a
+                    href={`/meet/${p.a.slug}/${p.b.slug}/`}
+                    class="inline-block rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    {p.a.name} ↔ {p.b.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <section aria-labelledby="pairs" class="mt-14">
+            <h2 id="pairs" class="text-2xl font-semibold tracking-tight mb-4">
+              Pair planners for this clock
+            </h2>
+            <p class="text-muted-foreground max-w-3xl">
+              {twin
+                ? `${city.name} keeps the same offset as ${twin.name} all year, so the two are interchangeable for scheduling maths. The pair planners are published under ${twin.name}:`
+                : "Browse every city to find the pair you need:"}
+            </p>
+            {twin && (
+              <a
+                href={`/meet/${twin.slug}/`}
+                class="mt-4 inline-block rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+              >
+                {twin.name} meeting planners →
+              </a>
+            )}
+          </section>
+        )
+      }
+
+      <footer class="mt-16 pt-6 border-t border-border text-xs text-muted-foreground">
+        <a href="/meet/" class="underline">All cities</a>
+        <span class="mx-2">·</span>
+        <a href="/guides/" class="underline">Scheduling guides</a>
+        <span class="mx-2">·</span>
+        Times computed from the IANA timezone database for
+        {" "}{DateTime.fromISO(date).toFormat("d LLLL yyyy")}.
+      </footer>
+    </div>
+  </main>
+</Layout>

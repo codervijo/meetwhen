@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { DateTime } from "luxon";
 import { CITIES, type City } from "../lib/cities";
+import {
+  CELLS,
+  bucket,
+  hourLabel,
+  fairnessTag,
+  inWindow,
+  penaltyFor,
+  slotLabel,
+  slotSummary,
+  todColor,
+  type Participant,
+  type ScoredSlot,
+} from "../lib/schedule";
 
-type Participant = {
-  id: string;
-  name: string;
-  city: City;
-  start: number; // earliest available hour, 0-23
-  end: number; // latest available hour, 1-24 (exclusive; may wrap past midnight)
-};
-
-type PerPerson = { p: Participant; local: DateTime; penalty: number; inWork: boolean };
-type ScoredSlot = { iso: string; inst: DateTime; per: PerPerson[]; total: number; variance: number };
-
-// ── Scoring constants (source of truth: behaviour spec) ──────────────────────
-const LATE_NIGHT_PENALTY = 120; // added when a person's local hour is 11pm–6am
-const CELLS = 48; // 48 half-hour cells across the chosen 24h day
 const STORAGE_KEY = "meetwhen.setup.v1";
 
 const newId = () => Math.random().toString(36).slice(2, 9);
@@ -26,100 +25,6 @@ function findCity(tz: string, name: string): City {
     CITIES.find((c) => c.tz === tz) ??
     CITIES[0]
   );
-}
-
-// Distance between two points on the 24h clock (shortest way round).
-function circDist(a: number, b: number) {
-  const d = Math.abs(a - b) % 24;
-  return Math.min(d, 24 - d);
-}
-
-// Is fractional local hour `h` inside the [start, end) window? Window may wrap midnight.
-function inWindow(h: number, start: number, end: number) {
-  if (start === end) return false;
-  if (start < end) return h >= start && h < end;
-  return h >= start || h < end; // wraps past midnight
-}
-
-// Hours from `h` to the nearest window edge (0 when inside the window).
-function distToWindow(h: number, start: number, end: number) {
-  if (inWindow(h, start, end)) return 0;
-  return Math.min(circDist(h, start), circDist(h, end % 24));
-}
-
-// Penalty for one person at one instant: 0 inside the window, else d² (+ late-night surcharge).
-function penaltyFor(local: DateTime, p: Participant) {
-  const h = local.hour + local.minute / 60;
-  if (inWindow(h, p.start, p.end)) return 0;
-  const d = distToWindow(h, p.start, p.end);
-  let pen = d * d;
-  if (local.hour >= 23 || local.hour < 6) pen += LATE_NIGHT_PENALTY;
-  return pen;
-}
-
-// Human time-of-day bucket for label generation.
-function bucket(local: DateTime, p: Participant): string {
-  const h = local.hour + local.minute / 60;
-  if (inWindow(h, p.start, p.end)) return "in hours";
-  const hr = local.hour;
-  if (hr >= 23 || hr < 6) return "the middle of the night";
-  if (hr < 12) return "early morning";
-  if (hr < 21) return "evening";
-  return "late evening";
-}
-
-// Time-of-day colour palette, keyed on the local hour of the cell.
-function todColor(hour: number): string {
-  if (hour < 5) return "hsl(234, 44%, 50%)"; // deep night
-  if (hour < 8) return "hsl(18, 78%, 60%)"; // dawn
-  if (hour < 12) return "hsl(43, 90%, 62%)"; // morning
-  if (hour < 17) return "hsl(199, 74%, 60%)"; // midday
-  if (hour < 20) return "hsl(28, 82%, 58%)"; // late afternoon
-  if (hour < 22) return "hsl(270, 48%, 57%)"; // evening
-  return "hsl(234, 44%, 50%)"; // night
-}
-
-function cap(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function hourLabel(h: number) {
-  const hh = ((h % 24) + 24) % 24;
-  const ap = hh < 12 ? "AM" : "PM";
-  let d = hh % 12;
-  if (d === 0) d = 12;
-  return `${d} ${ap}`;
-}
-
-// One-line label describing the human tradeoff of a slot.
-function slotLabel(s: ScoredSlot, count: number): string {
-  const offenders = s.per.filter((x) => x.penalty > 0);
-  if (offenders.length === 0) return "Everyone available";
-  if (count === 2) {
-    const [a, b] = s.per;
-    return `${cap(bucket(a.local, a.p))} for ${a.p.name}, ${bucket(b.local, b.p)} for ${b.p.name}`;
-  }
-  const names = offenders.map((x) => x.p.name).join(", ");
-  return `Good for ${count - offenders.length}, off-hours for ${names}`;
-}
-
-// Fairness tag: who, if anyone, takes the hit.
-function fairnessTag(s: ScoredSlot): string {
-  const pens = s.per.map((x) => x.penalty);
-  const max = Math.max(...pens);
-  if (max === 0) return "Everyone comfortable";
-  if (max - Math.min(...pens) < 30) return "Shared discomfort";
-  const names = s.per.filter((x) => x.penalty === max).map((x) => x.p.name).join(", ");
-  return `${names} take the hit`;
-}
-
-// Plain-text summary for the clipboard.
-function slotSummary(s: ScoredSlot): string {
-  const date = s.per[0].local.toFormat("EEE, MMM d");
-  const lines = s.per.map(
-    (x) => `- ${x.p.name} · ${x.p.city.name} — ${x.local.toFormat("h:mm a")}`,
-  );
-  return `Meeting: ${date}\n${lines.join("\n")}`;
 }
 
 // Pin / badge colour by rank (best green, top-3 indigo, rest gray).
@@ -154,14 +59,53 @@ function detectCity(): City {
   return CITIES[0];
 }
 
-export default function TimezoneTool() {
-  const [participants, setParticipants] = useState<Participant[]>(DEFAULT_PARTICIPANTS);
+// A participant as handed in from an Astro page — plain JSON, since island props
+// cross a serialization boundary. Mirrors the localStorage shape.
+export type PrefillParticipant = {
+  name: string;
+  tz: string;
+  cityName: string;
+  start?: number;
+  end?: number;
+};
+
+type Props = {
+  // When set, the tool opens on these participants instead of the saved setup.
+  // Used by the pre-filled city pages so the hydrated tool matches the HTML
+  // Google indexed.
+  prefill?: PrefillParticipant[];
+};
+
+export default function TimezoneTool({ prefill }: Props = {}) {
+  const prefilled = useMemo<Participant[] | null>(
+    () =>
+      prefill && prefill.length >= 2
+        ? prefill.map((x) => ({
+            id: newId(),
+            name: x.name,
+            city: findCity(x.tz, x.cityName),
+            start: Number.isFinite(x.start) ? (x.start as number) : 9,
+            end: Number.isFinite(x.end) ? (x.end as number) : 17,
+          }))
+        : null,
+    [prefill],
+  );
+
+  const [participants, setParticipants] = useState<Participant[]>(
+    () => prefilled ?? DEFAULT_PARTICIPANTS(),
+  );
   const [date, setDate] = useState<string>(() => DateTime.now().toISODate() ?? "2026-01-01");
   const [selectedIso, setSelectedIso] = useState<string | null>(null);
   const loaded = useRef(false);
 
   // ── Persistence: restore setup from localStorage on first mount ────────────
   useEffect(() => {
+    // A pre-filled page is the authority on its own participants: skip both the
+    // saved setup and timezone detection so the page keeps saying what it says.
+    if (prefilled) {
+      loaded.current = true;
+      return;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -188,11 +132,14 @@ export default function TimezoneTool() {
     const detected = detectCity();
     setParticipants((ps) => ps.map((p, i) => (i === 0 ? { ...p, city: detected } : p)));
     loaded.current = true;
-  }, []);
+  }, [prefilled]);
 
   // Persist on every change (skipped until the initial restore has run).
   useEffect(() => {
     if (!loaded.current) return;
+    // Pre-filled pages don't write back — otherwise browsing city pages would
+    // quietly overwrite the setup the visitor built on the home page.
+    if (prefilled) return;
     try {
       localStorage.setItem(
         STORAGE_KEY,
@@ -210,7 +157,7 @@ export default function TimezoneTool() {
     } catch {
       // Storage full / blocked — setup just won't survive refresh.
     }
-  }, [participants, date]);
+  }, [participants, date, prefilled]);
 
   // ── Aligned axis: 48 half-hour instants across the chosen day in P1's zone ─
   const anchorTz = participants[0]?.city.tz ?? "UTC";

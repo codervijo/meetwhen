@@ -1,0 +1,160 @@
+---
+// Server-rendered meeting-slot results. This is the crawlable half of a
+// pre-filled page: the same `rankSlots` output the React island computes, but
+// baked into HTML at build time so the page has real content before (and
+// without) hydration.
+import { DateTime } from "luxon";
+import {
+  CELLS,
+  buildAxis,
+  fairnessTag,
+  hourLabel,
+  inWindow,
+  overlapMask,
+  rankSlots,
+  slotLabel,
+  todColor,
+  type Participant,
+} from "../lib/schedule";
+
+interface Props {
+  participants: Participant[];
+  dateISO: string;
+  heading?: string;
+}
+
+const { participants, dateISO, heading = "Best meeting times" } = Astro.props;
+
+const ranked = rankSlots(participants, dateISO);
+const free = overlapMask(participants, dateISO);
+const axis = buildAxis(dateISO, participants[0].city.tz);
+// Two distinct measures that disagree at the boundary, deliberately kept apart:
+// `overlapHrs` is time both people are strictly inside their hours, while
+// `cleanOverlap` is whether any slot costs nobody anything — which includes a
+// slot landing exactly on the closing edge of someone's day.
+const cleanOverlap = ranked.some((s) => s.total === 0);
+const overlapHrs = free.filter(Boolean).length / 2;
+const dateLabel = DateTime.fromISO(dateISO).toFormat("cccc, d LLLL yyyy");
+---
+
+<section aria-labelledby="best-times" class="mt-12">
+  <h2 id="best-times" class="text-2xl font-semibold tracking-tight mb-2">{heading}</h2>
+  <p class="text-sm text-muted-foreground mb-6">
+    Ranked for <strong>{dateLabel}</strong>, assuming each person is available 9:00–17:00 in
+    their own local time. Change the date or the hours in the planner above and the ranking
+    updates live.
+  </p>
+
+  {/*
+    Three genuinely different situations, and they must not be conflated:
+    a shared window; no shared window but a zero-cost slot sitting exactly on
+    the boundary of both days; and no shared window at all.
+  */}
+  {
+    overlapHrs > 0 ? (
+      <p class="rounded-lg border border-border bg-card px-4 py-3 text-sm mb-6">
+        These cities share <strong>{overlapHrs} hours</strong> of overlapping working time, so
+        at least one slot works for everyone with nobody taking an off-hours call.
+      </p>
+    ) : cleanOverlap ? (
+      <p class="rounded-lg border border-border bg-card px-4 py-3 text-sm mb-6">
+        The working days <strong>touch but do not overlap</strong>: one side's day ends exactly
+        as the other's begins. That edge is still a workable slot — nobody is called outside
+        their hours — but there is no room either side of it.
+      </p>
+    ) : (
+      <p class="rounded-lg border border-border bg-card px-4 py-3 text-sm mb-6">
+        There is <strong>no window where every person is inside their working hours</strong>.
+        Someone has to move. The slots below are ranked by how small and how evenly shared that
+        compromise is.
+      </p>
+    )
+  }
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="text-left border-b border-border">
+          <th scope="col" class="py-2 pr-4 font-medium">#</th>
+          {
+            participants.map((p) => (
+              <th scope="col" class="py-2 pr-4 font-medium whitespace-nowrap">
+                {p.city.name}
+              </th>
+            ))
+          }
+          <th scope="col" class="py-2 pr-4 font-medium">Tradeoff</th>
+          <th scope="col" class="py-2 font-medium">Fairness</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          ranked.map((s, i) => (
+            <tr class="border-b border-border/60">
+              <td class="py-2 pr-4 font-mono text-xs text-muted-foreground">{i + 1}</td>
+              {s.per.map((x) => (
+                <td class="py-2 pr-4 whitespace-nowrap">
+                  <span class={x.penalty === 0 ? "font-medium" : "font-medium text-orange-500"}>
+                    {x.local.toFormat("h:mm a")}
+                  </span>
+                  <span class="text-muted-foreground text-xs ml-1">
+                    {x.local.toFormat("ccc")}
+                  </span>
+                </td>
+              ))}
+              <td class="py-2 pr-4 text-muted-foreground">{slotLabel(s, participants.length)}</td>
+              <td class="py-2 text-muted-foreground">{fairnessTag(s)}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-lg font-medium mt-10 mb-3">The full day, side by side</h3>
+  <p class="text-sm text-muted-foreground mb-4">
+    Each row is one person's {dateLabel.split(",")[0]}, in their own local time. Aligned
+    vertically, so any column is the same moment everywhere.
+  </p>
+
+  <div class="space-y-3">
+    {
+      participants.map((p) => (
+        <div>
+          <div class="flex items-baseline justify-between mb-1">
+            <span class="text-sm font-medium">
+              {p.city.name}
+              <span class="text-muted-foreground font-normal"> · {p.city.country}</span>
+            </span>
+            <span class="text-xs text-muted-foreground font-mono">{p.city.tz}</span>
+          </div>
+          <div class="flex h-7 rounded-md overflow-hidden border border-border">
+            {axis.instants.map((inst, i) => {
+              const l = inst.setZone(p.city.tz);
+              const working = inWindow(l.hour + l.minute / 60, p.start, p.end);
+              return (
+                <div
+                  class="flex-1"
+                  style={`background:${todColor(l.hour)};opacity:${working ? 1 : 0.32}`}
+                  title={`${l.toFormat("h:mm a")} in ${p.city.name}`}
+                />
+              );
+            })}
+          </div>
+          <div class="flex justify-between text-[10px] text-muted-foreground font-mono mt-1">
+            {
+              [0, 6, 12, 18, 23].map((h) => {
+                const l = axis.instants[Math.min(h * 2, CELLS - 1)].setZone(p.city.tz);
+                return <span>{hourLabel(l.hour)}</span>;
+              })
+            }
+          </div>
+        </div>
+      ))
+    }
+  </div>
+  <p class="text-xs text-muted-foreground mt-3">
+    Solid blocks are working hours; faded blocks are outside them. Colours follow the local
+    time of day.
+  </p>
+</section>

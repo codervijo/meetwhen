@@ -1,0 +1,43 @@
+---
+// Shared <head> contents for every page: title, description, canonical, OG,
+// Twitter card, favicon, and any page-specific JSON-LD blocks.
+//
+// Goes inside `<Fragment slot="head">` so Layout.astro can place it in <head>.
+const SITE = "https://meetwhen.xyz";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string; // site-root-relative, with leading and trailing slash
+  ogTitle?: string;
+  jsonLd?: unknown[];
+  noindex?: boolean;
+}
+
+const { title, description, path, ogTitle, jsonLd = [], noindex = false } = Astro.props;
+const canonical = `${SITE}${path}`;
+---
+
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+{noindex && <meta name="robots" content="noindex,follow" />}
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content={ogTitle ?? title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:site_name" content="meetwhen.xyz" />
+
+<!-- Twitter card -->
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content={ogTitle ?? title} />
+<meta name="twitter:description" content={description} />
+
+{
+  jsonLd.map((block) => (
+    <script type="application/ld+json" set:html={JSON.stringify(block)} />
+  ))
+}

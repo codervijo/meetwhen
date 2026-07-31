@@ -2,8 +2,40 @@
 // src/pages/index.astro
 import Layout from "../layouts/Layout.astro";
 import TimezoneTool from "../components/TimezoneTool.tsx";
+import { CITIES, HUB_PAIRS, pairPath, cityBySlug } from "../lib/cities";
+import { GUIDES } from "../lib/guides";
 
 const site = "https://meetwhen.xyz";
+
+// Hand-picked entry points into the pair tree — the routes that carry the most
+// obvious search intent. Filtered through `pairPath` so a pair that stops being
+// generated (offset dedup) can never leave a dead link on the home page.
+const FEATURED_PAIR_SLUGS: Array<[string, string]> = [
+  ["san-francisco", "london"],
+  ["new-york", "london"],
+  ["london", "mumbai"],
+  ["new-york", "mumbai"],
+  ["san-francisco", "singapore"],
+  ["london", "singapore"],
+  ["new-york", "sao-paulo"],
+  ["london", "tokyo"],
+  ["san-francisco", "sydney"],
+  ["london", "sydney"],
+  ["new-york", "tokyo"],
+  ["mumbai", "singapore"],
+];
+
+const FEATURED_PAIRS = FEATURED_PAIR_SLUGS.flatMap(([x, y]) => {
+  const a = cityBySlug(x);
+  const b = cityBySlug(y);
+  if (!a || !b || !pairPath(a, b)) return [];
+  const canonical = HUB_PAIRS.find(
+    (p) =>
+      (p.a.slug === a.slug && p.b.slug === b.slug) ||
+      (p.a.slug === b.slug && p.b.slug === a.slug),
+  );
+  return canonical ? [canonical] : [];
+});
 const title = "meetwhen.xyz — Find the best meeting time across timezones";
 const description =
   "meetwhen.xyz is a free timezone meeting planner. Add your team's cities, compare working hours, and instantly see the best meeting slots across timezones.";
@@ -168,6 +200,47 @@ const faqLd = {
             </div>
           ))}
         </dl>
+      </section>
+
+      <section aria-labelledby="popular-pairs" class="mt-16">
+        <h2 id="popular-pairs" class="text-2xl font-semibold tracking-tight mb-2">
+          Ready-made city pairs
+        </h2>
+        <p class="text-sm text-muted-foreground mb-5">
+          Pre-filled planners for the pairs people schedule most, each with the ranked slots
+          already worked out.
+        </p>
+        <ul class="flex flex-wrap gap-2">
+          {FEATURED_PAIRS.map((p) => (
+            <li>
+              <a
+                href={`/meet/${p.a.slug}/${p.b.slug}/`}
+                class="inline-block rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+              >
+                {p.a.name} ↔ {p.b.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-4 text-sm text-muted-foreground">
+          Browse all <a href="/meet/" class="underline">{CITIES.length} cities and {HUB_PAIRS.length} pairs</a>.
+        </p>
+      </section>
+
+      <section aria-labelledby="guides" class="mt-16">
+        <h2 id="guides" class="text-2xl font-semibold tracking-tight mb-6">
+          Scheduling guides
+        </h2>
+        <ul class="grid gap-4 sm:grid-cols-2">
+          {GUIDES.map((g) => (
+            <li class="rounded-lg border border-border bg-card p-5">
+              <h3 class="font-medium">
+                <a href={`/guides/${g.slug}/`} class="hover:underline">{g.h1}</a>
+              </h3>
+              <p class="text-sm text-muted-foreground mt-1">{g.blurb}</p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <footer class="mt-16 pt-6 border-t border-border text-xs text-muted-foreground">
